@@ -27,9 +27,14 @@ terminate(_Reason, _Req, _State) ->
 capture() ->
     Cmd = "raspistill -w 1920 -h 1080 -q 100 -t 0 -vf -o -",
     Port = erlang:open_port({spawn, Cmd}, [binary, exit_status]),
+    capture(Port, <<>>).
+
+capture(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
-            {ok, Data};
-        {Port, {exit_status, N}} when N =/= 0 ->
+            capture(Port, <<Acc/binary, Data/binary>>);
+        {Port, {exit_status, 0}} ->
+            {ok, Acc};
+        {Port, {exit_status, _}} ->
             {error, unknown}
     end.
