@@ -64,7 +64,7 @@ code_change(_OldVsn, State, _Extra) ->
 do_capture(Acc, Port) ->
     receive
         {Port, {data, Data}} ->
-            capture(<<Acc/binary, Data/binary>>, Port);
+            do_capture(<<Acc/binary, Data/binary>>, Port);
         {Port, {exit_status, 0}} ->
             {ok, Acc};
         {Port, {exit_status, _}} ->
