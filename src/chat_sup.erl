@@ -22,6 +22,6 @@ start_link() ->
 
 init([]) ->
     {ok, { {one_for_one, 5, 10}, [
-                {chat_still_srv, {chat_still_srv, start_link, []},
-                 permanent, 5000, worker, [chat_still_srv]}
+                {chat, {chat, start_link, []},
+                 permanent, 5000, worker, [chat]}
                 ]} }.

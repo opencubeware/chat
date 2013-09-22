@@ -1,8 +1,8 @@
 ## Name of the node
--name chat@127.0.0.1
+-sname chat
 
 ## Cookie for distributed erlang
--setcookie chat
+-setcookie ocw
 
 ## Heartbeat management; auto-restarts VM if it dies or becomes unresponsive
 ## (Disabled by default..use with caution!)

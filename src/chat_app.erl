@@ -11,7 +11,7 @@
 
 start(_StartType, _StartArgs) ->
     Dispatch = cowboy_router:compile([
-                {'_', [{"/still", chat_still, []}]}
+                {'_', [{"/still", chat_still_handler, []}]}
                 ]),
     cowboy:start_http(chat_listener, 10,
                       [{port, 8080}],
