@@ -1,7 +1,7 @@
 -module(chat_overlay).
 
--export([new/1,
-         new/3,
+-export([new/0,
+         new/2,
          add_logo/0,
          add_logo/4,
          save/1]).
@@ -12,10 +12,10 @@ on_load() ->
     LibFile = filename:join(["priv", "lib", ?MODULE]),
     erlang:load_nif(LibFile, 0).
 
-new(Pid) ->
-    new(Pid, 1280, 720).
+new() ->
+    new(1280, 720).
 
-new(_Pid, _Width, _Height) ->
+new(_Width, _Height) ->
     error(nif_not_loaded).
 
 add_logo() ->

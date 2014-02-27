@@ -13,7 +13,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     attr.mq_maxmsg = 10;
     attr.mq_curmsgs = 0;
     
-    writer = mq_open(queue_name, O_CREAT | O_WRONLY, PERMS, &attr);
+    writer = mq_open(queue_name, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
     reader = mq_open(queue_name, O_RDONLY);
     if(writer == -1 || reader == -1) {
         return 1;
@@ -32,18 +32,18 @@ static ERL_NIF_TERM new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     int width;
     int height;
     
-    if(!enif_get_local_pid(env, argv[0], &pid) ||
-       !enif_get_int(env, argv[1], &width) ||
-       !enif_get_int(env, argv[2], &height)) {
+    enif_self(env, &pid);
+    if(!enif_get_int(env, argv[0], &width) ||
+       !enif_get_int(env, argv[1], &height)) {
         return enif_make_badarg(env);
     }
     
     new_args* args = (new_args*)enif_alloc(sizeof(new_args));
-    args->env = env;
     args->pid = pid;
     args->width = width;
     args->height = height;
     message msg = {do_new, args};
+    
     if(mq_send(writer, (char*)&msg, sizeof(message), 0)) {
         return ERROR;
     }
@@ -53,6 +53,7 @@ static ERL_NIF_TERM new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 }
 
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifPid pid;
     char file[256];
     int x;
     int y;
@@ -62,6 +63,7 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
         return ERROR;
     }
     
+    enif_self(env, &pid);
     if(enif_get_string(env, argv[0], file, 256, ERL_NIF_LATIN1) <= 0 ||
        !enif_get_int(env, argv[1], &x) ||
        !enif_get_int(env, argv[2], &y) ||
@@ -70,6 +72,7 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     }
     
     add_logo_args* args = (add_logo_args*)enif_alloc(sizeof(add_logo_args));
+    args->pid = pid;
     strcpy(args->file, file);
     args->x = x;
     args->y = y;
@@ -84,17 +87,20 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 }
 
 static ERL_NIF_TERM save(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifPid pid;
     char file[256];
     
     if(s.context == NULL || cairo_status(s.context) != CAIRO_STATUS_SUCCESS) {
         return ERROR;
     }
     
+    enif_self(env, &pid);
     if(enif_get_string(env, argv[0], file, 256, ERL_NIF_LATIN1) <= 0) {
         return enif_make_badarg(env);
     }
     
     save_args* args = (save_args*)enif_alloc(sizeof(save_args));
+    args->pid = pid;
     strcpy(args->file, file);
     message msg = {do_save, args};
     if(mq_send(writer, (char*)&msg, sizeof(message), 0)) {
@@ -122,7 +128,8 @@ static void do_new(void* args) {
     new_args* a = (new_args*)args;
     s.surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, a->width, a->height);
     s.context = cairo_create(s.surface);
-    enif_send(a->env, &a->pid, local_env, OK);
+    enif_send(NULL, &a->pid, local_env, OK);
+    enif_clear_env(local_env);
 }
 
 static void do_add_logo(void* args) {
@@ -133,11 +140,15 @@ static void do_add_logo(void* args) {
         cairo_paint_with_alpha(s.context, a->alpha);
         cairo_surface_destroy(logo);
     }
+    enif_send(NULL, &a->pid, local_env, OK);
+    enif_clear_env(local_env);
 }
 
 static void do_save(void* args) {
     save_args* a = (save_args*)args;
     cairo_surface_write_to_png(s.surface, a->file);
+    enif_send(NULL, &a->pid, local_env, OK);
+    enif_clear_env(local_env);
 }
 
 ERL_NIF_INIT(chat_overlay, nif_funcs, load, NULL, NULL, NULL);

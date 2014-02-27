@@ -22,13 +22,13 @@ typedef struct {
 
 // structs for carrying arguments for worker thread callbacks
 typedef struct {
-    ErlNifEnv *env;
     ErlNifPid pid;
     int width;
     int height;
 } new_args;
 
 typedef struct {
+    ErlNifPid pid;
     char file[256];
     int x;
     int y;
@@ -36,6 +36,7 @@ typedef struct {
 } add_logo_args;
 
 typedef struct {
+    ErlNifPid pid;
     char file[256];
 } save_args;
 
@@ -58,7 +59,7 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 static ERL_NIF_TERM save(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ErlNifFunc nif_funcs[] =
 {
-    {"new", 3, new},
+    {"new", 2, new},
     {"add_logo", 4, add_logo},
     {"save", 1, save}
 };
