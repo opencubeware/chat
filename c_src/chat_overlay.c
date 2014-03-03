@@ -39,6 +39,19 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     return 0;
 }
 
+static void unload(ErlNifEnv* env, void* priv_data) {
+    // terminate worker thread
+    message_t msg = {CALLBACK, enif_thread_exit, NULL};
+    mq_send(writer, (char*)&msg, sizeof(message_t), 0);
+    enif_thread_join(tid, NULL);
+    
+    enif_free_env(local_env);
+    enif_free(pixels);
+    mq_close(writer);
+    mq_close(reader);
+    mq_close(data_writer);
+}
+
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
     char file[256];
@@ -144,7 +157,7 @@ static void do_delete_segment(void* args) {
     delete_segment_args* a = (delete_segment_args*)args;
     segment_t* segment = segments[a->segment];
     if(segment == NULL) {
-        ERL_NIF_TERM atom = enif_make_atom(local_env, "segment_doesnt_exist");
+        ERL_NIF_TERM atom = enif_make_atom(local_env, "no_such_segment");
         ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
         enif_send(NULL, &a->pid, local_env, tuple);
         enif_clear_env(local_env);
@@ -199,4 +212,4 @@ static void send_data(ErlNifEnv *env, ErlNifPid *pid, ERL_NIF_TERM term) {
     enif_clear_env(env);
 }
 
-ERL_NIF_INIT(chat_overlay, nif_funcs, load, NULL, NULL, NULL);
+ERL_NIF_INIT(chat_overlay, nif_funcs, load, NULL, NULL, unload);

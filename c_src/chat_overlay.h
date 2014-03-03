@@ -48,6 +48,7 @@ static pixel_t *pixels;
 
 // NIF callbacks
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
+static void unload(ErlNifEnv* env, void* priv_data);
 
 // NIFs
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
@@ -64,4 +65,3 @@ static void* worker_loop(void*);
 static void do_add_logo(void*);
 static void do_delete_segment(void*);
 static void send_data(ErlNifEnv*, ErlNifPid*, ERL_NIF_TERM);
-
