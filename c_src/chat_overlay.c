@@ -4,18 +4,30 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     // build local environment
     local_env = enif_alloc_env();
     
+    // clear segments counter
+    next_segment = 0;
+    
+    // alloc pixel buffer (it has to be on the heap)
+    pixels = (pixel_t*)(enif_alloc(sizeof(pixel_t)*DATALEN));
+    
     //open POSIX message queue to interoperate with the worker thread
     const char* queue_name = "/chat_overlay_worker";
-    mq_unlink(queue_name);
 
     attr.mq_msgsize = MSGSIZE;
     attr.mq_flags = 0;
     attr.mq_maxmsg = 10;
     attr.mq_curmsgs = 0;
     
+    data_attr.mq_msgsize = DATASIZE;
+    data_attr.mq_flags = 0;
+    data_attr.mq_maxmsg = 10;
+    data_attr.mq_curmsgs = 0;
+    
     writer = mq_open(queue_name, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
     reader = mq_open(queue_name, O_RDONLY);
-    if(writer == -1 || reader == -1) {
+    data_writer = mq_open(DATA_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &data_attr);
+    
+    if(writer == -1 || reader == -1 || data_writer == -1) {
         return 1;
     }
     
@@ -27,41 +39,12 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     return 0;
 }
 
-static ERL_NIF_TERM new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    ErlNifPid pid;
-    int width;
-    int height;
-    
-    enif_self(env, &pid);
-    if(!enif_get_int(env, argv[0], &width) ||
-       !enif_get_int(env, argv[1], &height)) {
-        return enif_make_badarg(env);
-    }
-    
-    new_args* args = (new_args*)enif_alloc(sizeof(new_args));
-    args->pid = pid;
-    args->width = width;
-    args->height = height;
-    message msg = {do_new, args};
-    
-    if(mq_send(writer, (char*)&msg, sizeof(message), 0)) {
-        return ERROR;
-    }
-    else {
-        return OK;
-    }
-}
-
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
     char file[256];
     int x;
     int y;
     double alpha;
-    
-    if(s.context == NULL || cairo_status(s.context) != CAIRO_STATUS_SUCCESS) {
-        return ERROR;
-    }
     
     enif_self(env, &pid);
     if(enif_get_string(env, argv[0], file, 256, ERL_NIF_LATIN1) <= 0 ||
@@ -77,8 +60,8 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     args->x = x;
     args->y = y;
     args->alpha = alpha;
-    message msg = {do_add_logo, args};
-    if(mq_send(writer, (char*)&msg, sizeof(message), 0)) {
+    message_t msg = {CALLBACK, do_add_logo, args};
+    if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
         return ERROR;
     }
     else {
@@ -86,24 +69,20 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     }
 }
 
-static ERL_NIF_TERM save(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
-    char file[256];
-    
-    if(s.context == NULL || cairo_status(s.context) != CAIRO_STATUS_SUCCESS) {
-        return ERROR;
-    }
+    int segment;
     
     enif_self(env, &pid);
-    if(enif_get_string(env, argv[0], file, 256, ERL_NIF_LATIN1) <= 0) {
+    if(!enif_get_int(env, argv[0], &segment)) {
         return enif_make_badarg(env);
     }
     
-    save_args* args = (save_args*)enif_alloc(sizeof(save_args));
+    delete_segment_args* args = (delete_segment_args*)enif_alloc(sizeof(delete_segment_args));
     args->pid = pid;
-    strcpy(args->file, file);
-    message msg = {do_save, args};
-    if(mq_send(writer, (char*)&msg, sizeof(message), 0)) {
+    args->segment = segment;
+    message_t msg = {CALLBACK, do_delete_segment, args};
+    if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
         return ERROR;
     }
     else {
@@ -113,7 +92,7 @@ static ERL_NIF_TERM save(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
 static void* worker_loop(void* args) {
     mqd_t reader = *((mqd_t*)args);
-    message* msg = (message*)enif_alloc(MSGSIZE);
+    message_t* msg = (message_t*)enif_alloc(MSGSIZE);
     while(1) {
         if(mq_receive(reader, (char*)msg, MSGSIZE, NULL) > 0) {
             (*(msg->callback))(msg->args);
@@ -124,31 +103,100 @@ static void* worker_loop(void* args) {
     return NULL;
 }
 
-static void do_new(void* args) {
-    new_args* a = (new_args*)args;
-    s.surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, a->width, a->height);
-    s.context = cairo_create(s.surface);
-    enif_send(NULL, &a->pid, local_env, OK);
-    enif_clear_env(local_env);
-}
-
 static void do_add_logo(void* args) {
     add_logo_args* a = (add_logo_args*)args;
     cairo_surface_t *logo = cairo_image_surface_create_from_png(a->file);
-    if(cairo_surface_status(logo) == CAIRO_STATUS_SUCCESS) {
-        cairo_set_source_surface(s.context, logo, a->x, a->y);
-        cairo_paint_with_alpha(s.context, a->alpha);
-        cairo_surface_destroy(logo);
+    int segment_idx = next_segment;
+    
+    if(segment_idx == -1) {
+        ERL_NIF_TERM atom = enif_make_atom(local_env, "no_free_segments");
+        ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
+        enif_send(NULL, &a->pid, local_env, tuple);
+        return;
     }
-    enif_send(NULL, &a->pid, local_env, OK);
-    enif_clear_env(local_env);
+    
+    if(cairo_surface_status(logo) == CAIRO_STATUS_SUCCESS) {
+        segment_t* new_segment = enif_alloc(sizeof(segment_t));
+        new_segment->x = a->x;
+        new_segment->y = a->y;
+        new_segment->alpha = a->alpha*255;
+        new_segment->surface = logo;
+        segments[segment_idx] = new_segment;
+        int i;
+        next_segment = -1;
+        for(i=0; i<MAX_SEGMENTS; i++) {
+            if(segments[i] == NULL) {
+                next_segment = i;
+                break;
+            }
+        }
+        ERL_NIF_TERM integer = enif_make_int(local_env, segment_idx);
+        ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, OK, integer);
+        send_data(local_env, &a->pid, tuple);
+    }
+    else {
+        enif_send(NULL, &a->pid, local_env, ERROR);
+        enif_clear_env(local_env);
+    }
 }
 
-static void do_save(void* args) {
-    save_args* a = (save_args*)args;
-    cairo_surface_write_to_png(s.surface, a->file);
-    enif_send(NULL, &a->pid, local_env, OK);
-    enif_clear_env(local_env);
+static void do_delete_segment(void* args) {
+    delete_segment_args* a = (delete_segment_args*)args;
+    segment_t* segment = segments[a->segment];
+    if(segment == NULL) {
+        ERL_NIF_TERM atom = enif_make_atom(local_env, "segment_doesnt_exist");
+        ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
+        enif_send(NULL, &a->pid, local_env, tuple);
+        enif_clear_env(local_env);
+    }
+    else {
+        segments[a->segment] = NULL;
+        cairo_surface_destroy(segment->surface);
+        enif_free(segment);
+        send_data(local_env, &a->pid, OK);
+    }
+}
+
+static void send_data(ErlNifEnv *env, ErlNifPid *pid, ERL_NIF_TERM term) {
+    unsigned int x,y,p=0,i;
+
+    for(i=0; i<MAX_SEGMENTS; i++) {
+        segment_t* segment = segments[i];
+        if(segment != NULL && p < DATALEN) {
+            int width = cairo_image_surface_get_width(segment->surface);
+            int height = cairo_image_surface_get_height(segment->surface);
+            unsigned char* data = cairo_image_surface_get_data(segment->surface);
+            for(x=0; x<width; x++) {
+                for(y=0; y<height; y++) {
+                    unsigned int start = (y*width+x)*4;
+                    if(data[start] > 0) {
+                        float root_alpha = data[start]/255.;
+                        unsigned char r = data[start+1];
+                        unsigned char g = data[start+2];
+                        unsigned char b = data[start+3];
+                        unsigned char ch_y = (unsigned char)(0.299*r+0.587*g+0.114*b);
+                        unsigned char ch_v = (unsigned char)(0.500*r-0.419*g-0.081*b)+128;
+                        unsigned char ch_u = (unsigned char)(-0.169*r-0.331*g-0.500*b)+128;
+                        pixel_t pixel;
+                        pixel.alpha = segment->alpha*root_alpha;
+                        pixel.x = x+segment->x;
+                        pixel.y = y+segment->y;
+                        pixel.yuv[0] = ch_y;
+                        pixel.yuv[1] = ch_u;
+                        pixel.yuv[2] = ch_v;
+                        pixels[p++] = pixel;
+                    }
+                }
+            }
+        }
+    }
+    if(mq_send(data_writer, (char*)pixels, p*sizeof(pixel_t), 0) == 0) {
+        enif_send(NULL, pid, env, term);
+    }
+    else {
+        enif_send(NULL, pid, env, ERROR);
+    }
+    enif_clear_env(env);
 }
 
 ERL_NIF_INIT(chat_overlay, nif_funcs, load, NULL, NULL, NULL);
