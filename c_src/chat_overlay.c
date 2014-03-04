@@ -51,9 +51,17 @@ static void unload(ErlNifEnv* env, void* priv_data) {
     mq_close(data_writer);
 }
 
-static ERL_NIF_TERM set_owner(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    int n=0, i;
+    ERL_NIF_TERM term_segments[MAX_SEGMENTS];
     enif_self(env, &owner);
-    return OK;
+    for(i=0; i<MAX_SEGMENTS; i++) {
+        if(segments[i] != NULL) {
+            ERL_NIF_TERM term = enif_make_int(env, i);
+            term_segments[n++] = term;
+        }
+    }
+    return enif_make_list_from_array(env, term_segments, n);
 }
 
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -169,7 +177,7 @@ static void do_add_logo(void* args) {
 static void do_delete_segment(void* args) {
     delete_segment_args* a = (delete_segment_args*)args;
     segment_t* segment = segments[a->segment];
-    if(segment == NULL) {
+    if(a->segment >= MAX_SEGMENTS || segment == NULL) {
         ERL_NIF_TERM atom = enif_make_atom(local_env, "no_such_segment");
         ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
         enif_send(NULL, &a->pid, local_env, tuple);

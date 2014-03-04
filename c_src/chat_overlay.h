@@ -53,14 +53,14 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
 static void unload(ErlNifEnv* env, void* priv_data);
 
 // NIFs
-static ERL_NIF_TERM set_owner(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ErlNifFunc nif_funcs[] =
 {
-    {"set_owner", 0, set_owner},
-    {"add_logo", 4, add_logo},
-    {"delete_segment", 1, delete_segment}
+    {"get_segments_nif", 0, get_segments},
+    {"add_logo_nif", 4, add_logo},
+    {"delete_segment_nif", 1, delete_segment}
 };
 
 // functions that are called in the context of a worker thread

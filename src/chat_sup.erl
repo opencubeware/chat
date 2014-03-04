@@ -22,6 +22,6 @@ start_link() ->
 
 init([]) ->
     {ok, { {one_for_one, 5, 10}, [
-                {chat, {chat, start_link, []},
-                 permanent, 5000, worker, [chat]}
+                {chat_overlay, {chat_overlay, start_link, []},
+                 permanent, brutal_kill, worker, [chat_overlay]}
                 ]} }.
