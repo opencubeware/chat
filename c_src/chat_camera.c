@@ -41,7 +41,12 @@ static pixel_t* pixel_buffer;
 
 static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
     static unsigned char frames = 0;
+    static struct timespec t1, t2;
     
+    if(frames == 0) {
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+    }
+
     MMAL_BUFFER_HEADER_T *new_buffer;
     MMAL_BUFFER_HEADER_T *output_buffer = 0;
     PORT_USERDATA *userdata = (PORT_USERDATA *) port->userdata;
@@ -108,11 +113,17 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
     
     frames++;
     if(frames == 100) {
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        long ms = (t2.tv_sec*1000 + t2.tv_nsec/1000000) - (t1.tv_sec*1000 + t1.tv_nsec/1000000);
+        float fpms = 100.0/ms;
+
         message_t msg;
         msg.type = FPS;
-        msg.fps = 25.0;
+        msg.fps = fpms*1000;
         mq_send(writer, (char*)&msg, sizeof(message_t), 0);
+
         frames = 0;
+        clock_gettime(CLOCK_MONOTONIC, &t1);
     }
 }
 

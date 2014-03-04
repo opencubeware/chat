@@ -1,5 +1,7 @@
 #include "chat_overlay.h"
 
+#include <errno.h>
+
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     // build local environment
     local_env = enif_alloc_env();
@@ -18,7 +20,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     
     data_attr.mq_msgsize = DATASIZE;
     data_attr.mq_flags = 0;
-    data_attr.mq_maxmsg = 10;
+    data_attr.mq_maxmsg = 2;
     data_attr.mq_curmsgs = 0;
     
     writer = mq_open(WORKER_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
@@ -26,6 +28,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     data_writer = mq_open(DATA_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &data_attr);
     
     if(writer == -1 || reader == -1 || data_writer == -1) {
+        perror("chat_overlay NIF loading error: ");
         return 1;
     }
     

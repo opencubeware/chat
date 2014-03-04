@@ -59,6 +59,9 @@ loop(State, Parent, Debug) ->
         {request, Ref, From, Request} ->
             NewState = handle_request(Request, From, Ref, State),
             loop(NewState, Parent, Debug);
+        {fps, Fps} ->
+            error_logger:info_msg("FPS: ~p", [Fps]),
+            loop(State, Parent, Debug);
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, Debug, State);
         _ ->
