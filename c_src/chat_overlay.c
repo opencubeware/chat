@@ -11,8 +11,6 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     pixels = (pixel_t*)(enif_alloc(sizeof(pixel_t)*DATALEN));
     
     //open POSIX message queue to interoperate with the worker thread
-    const char* queue_name = "/chat_overlay_worker";
-
     attr.mq_msgsize = MSGSIZE;
     attr.mq_flags = 0;
     attr.mq_maxmsg = 10;
@@ -23,8 +21,8 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     data_attr.mq_maxmsg = 10;
     data_attr.mq_curmsgs = 0;
     
-    writer = mq_open(queue_name, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
-    reader = mq_open(queue_name, O_RDONLY);
+    writer = mq_open(WORKER_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
+    reader = mq_open(WORKER_QUEUE, O_RDONLY);
     data_writer = mq_open(DATA_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &data_attr);
     
     if(writer == -1 || reader == -1 || data_writer == -1) {
@@ -36,6 +34,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     
     OK = enif_make_atom(env, "ok");
     ERROR = enif_make_atom(env, "error");
+              
     return 0;
 }
 
@@ -50,6 +49,11 @@ static void unload(ErlNifEnv* env, void* priv_data) {
     mq_close(writer);
     mq_close(reader);
     mq_close(data_writer);
+}
+
+static ERL_NIF_TERM set_owner(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    enif_self(env, &owner);
+    return OK;
 }
 
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -108,8 +112,17 @@ static void* worker_loop(void* args) {
     message_t* msg = (message_t*)enif_alloc(MSGSIZE);
     while(1) {
         if(mq_receive(reader, (char*)msg, MSGSIZE, NULL) > 0) {
-            (*(msg->callback))(msg->args);
-            enif_free(msg->args);
+            if(msg->type == CALLBACK) {
+                (*(msg->callback))(msg->args);
+                enif_free(msg->args);
+            }
+            else if(msg->type == FPS) {
+                ERL_NIF_TERM fps = enif_make_double(local_env, (double)msg->fps);
+                ERL_NIF_TERM atom = enif_make_atom(local_env, "fps");
+                ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, atom, fps);
+                enif_send(NULL, &owner, local_env, tuple);
+                enif_clear_env(local_env);
+            }
         }
     }
     enif_free(msg);

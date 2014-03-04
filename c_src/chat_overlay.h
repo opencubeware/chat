@@ -36,25 +36,29 @@ typedef struct {
 // "global" variables
 static ERL_NIF_TERM OK;
 static ERL_NIF_TERM ERROR;
+
 static ErlNifTid tid;
 static mqd_t writer;
 static mqd_t reader;
 static mqd_t data_writer;
-static struct mq_attr attr;
+static struct mq_attr attr, data_attr;
 static ErlNifEnv *local_env;
 static segment_t* segments[MAX_SEGMENTS];
 static int next_segment;
 static pixel_t *pixels;
+static ErlNifPid owner;
 
 // NIF callbacks
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
 static void unload(ErlNifEnv* env, void* priv_data);
 
 // NIFs
+static ERL_NIF_TERM set_owner(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ErlNifFunc nif_funcs[] =
 {
+    {"set_owner", 0, set_owner},
     {"add_logo", 4, add_logo},
     {"delete_segment", 1, delete_segment}
 };

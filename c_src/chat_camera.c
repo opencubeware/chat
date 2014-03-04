@@ -34,10 +34,14 @@ typedef struct {
     MMAL_POOL_T *encoder_output_pool;
 } PORT_USERDATA;
 
+static struct mq_attr attr, data_attr;
+static mqd_t reader, writer;
 static unsigned int pixels;
 static pixel_t* pixel_buffer;
 
 static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
+    static unsigned char frames = 0;
+    
     MMAL_BUFFER_HEADER_T *new_buffer;
     MMAL_BUFFER_HEADER_T *output_buffer = 0;
     PORT_USERDATA *userdata = (PORT_USERDATA *) port->userdata;
@@ -100,6 +104,15 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
         if (!new_buffer || status != MMAL_SUCCESS) {
             //fprintf(stderr, "Error: Unable to return a buffer to the video port\n");
         }
+    }
+    
+    frames++;
+    if(frames == 100) {
+        message_t msg;
+        msg.type = FPS;
+        msg.fps = 25.0;
+        mq_send(writer, (char*)&msg, sizeof(message_t), 0);
+        frames = 0;
     }
 }
 
@@ -449,7 +462,13 @@ int main(int argc, char** argv) {
     data_attr.mq_flags = 0;
     data_attr.mq_maxmsg = 10;
     data_attr.mq_curmsgs = 0;
-    mqd_t reader = mq_open(DATA_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, PERMS, &data_attr);
+    reader = mq_open(DATA_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, PERMS, &data_attr);
+    
+    attr.mq_msgsize = MSGSIZE;
+    attr.mq_flags = 0;
+    attr.mq_maxmsg = 10;
+    attr.mq_curmsgs = 0;
+    writer = mq_open(WORKER_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &attr);
     
     if(reader == -1) {
         return -1;

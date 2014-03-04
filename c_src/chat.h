@@ -1,5 +1,6 @@
 #include <mqueue.h>
 
+#define WORKER_QUEUE "/chat_overlay_worker"
 #define DATA_QUEUE "/chat_overlay_data"
 #define PERMS (S_IRUSR | S_IWUSR)
 
@@ -9,14 +10,13 @@
 #define BITRATE 10000000
 #define MAX_SEGMENTS 10
 
-static struct mq_attr data_attr;
-
 typedef enum {CALLBACK, FPS} MESSAGE_TYPE;
 
 typedef struct {
     MESSAGE_TYPE type;
     void (*callback)(void*);
     void* args;
+    float fps;
 } message_t;
 
 #define MSGSIZE (sizeof(message_t)>128 ? sizeof(message_t) : 128)

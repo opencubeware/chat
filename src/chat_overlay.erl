@@ -1,6 +1,7 @@
 -module(chat_overlay).
 
--export([add_logo/0,
+-export([set_owner/0,
+         add_logo/0,
          add_logo/4,
          delete_segment/1]).
 
@@ -9,6 +10,9 @@
 on_load() ->
     LibFile = filename:join(["priv", "lib", ?MODULE]),
     erlang:load_nif(LibFile, 0).
+
+set_owner() ->
+    error(nif_not_loaded).
 
 add_logo() ->
     LogoFile = filename:join(["priv", "assets", "logo_720.png"]),
