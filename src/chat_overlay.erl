@@ -60,8 +60,8 @@ loop(State, Parent, Debug) ->
             NewState = handle_request(Request, From, Ref, State),
             loop(NewState, Parent, Debug);
         {fps, Fps} ->
-            error_logger:info_msg("FPS: ~p", [Fps]),
-            loop(State, Parent, Debug);
+            NewState = handle_fps(Fps, State),
+            loop(NewState, Parent, Debug);
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, Debug, State);
         _ ->
@@ -102,6 +102,10 @@ handle_delete_segment(Id, State=#state{segments=Segs}) ->
             {Other, State}
     end.
 
+handle_fps(Fps, State) ->
+    folsom_metrics:notify({fps, round_to_hundreds(Fps)}),
+    State.
+
 system_continue(Parent, Debug, State) ->
     loop(State, Parent, Debug).
 
@@ -131,6 +135,9 @@ wait_for(ok) ->
     end;
 wait_for(Other) ->
     Other.
+
+round_to_hundreds(Number) ->
+    erlang:round(Number*10) / 10.
 %% ===================================================================
 %% NIFs
 %% ===================================================================

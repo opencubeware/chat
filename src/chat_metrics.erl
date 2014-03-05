@@ -1,11 +1,10 @@
--module(chat_camera).
+-module(chat_metrics).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1,
-         start/1,
-         stop/0]).
+-export([start_link/0,
+         get_metrics/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -15,36 +14,28 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-start_link(Output) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Output], []).
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-start(Output) ->
-    supervisor:terminate_child(chat_camera_sup, ?MODULE),
-    supervisor:delete_child(chat_camera_sup, ?MODULE),
-    Spec = {?MODULE, {?MODULE, start_link, [Output]},
-            transient, 1000, worker, [?MODULE]},
-    supervisor:start_child(chat_camera_sup, Spec).
-
-stop() ->
-    gen_server:call(?MODULE, stop).
+get_metrics() ->
+    gen_server:call(?MODULE, get_metrics).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Output]) ->
-    App = filename:join([priv, lib, chat_camera]),
-    Cmd = App ++ " > " ++ Output,
-    Port = erlang:open_port({spawn, Cmd}, [exit_status]),
-    folsom_metrics:notify({camera_starts, {inc, 1}}),
-    {ok, #state{port=Port}}.
+init([]) ->
+    {ok, #state{}}.
 
-handle_call(stop, _From, State) ->
-    {stop, shutdown, ok, State};
+handle_call(get_metrics, _From, State) ->
+    Fps = folsom_metrics:get_histogram_statistics(fps),
+    Starts = folsom_metrics:get_metric_value(camera_starts),
+    Reply = [{fps, Fps}, {camera_starts, Starts}],
+    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -52,8 +43,6 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({Port, {exit_status, _}}, #state{port=Port}=State) ->
-    {stop, chat_camera_exited, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
