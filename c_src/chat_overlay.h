@@ -7,6 +7,7 @@
 #include "erl_nif.h"
 
 typedef struct {
+    char id[128];
     unsigned int x;
     unsigned int y;
     unsigned char alpha;
@@ -22,6 +23,7 @@ typedef struct {
 
 typedef struct {
     ErlNifPid pid;
+    char id[128];
     char file[256];
     int x;
     int y;
@@ -30,7 +32,7 @@ typedef struct {
 
 typedef struct {
     ErlNifPid pid;
-    int segment;
+    char id[128];
 } delete_segment_args;
 
 // "global" variables
@@ -59,7 +61,7 @@ static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
 static ErlNifFunc nif_funcs[] =
 {
     {"get_segments_nif", 0, get_segments},
-    {"add_logo_nif", 4, add_logo},
+    {"add_logo_nif", 5, add_logo},
     {"delete_segment_nif", 1, delete_segment}
 };
 

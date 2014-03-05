@@ -60,8 +60,8 @@ static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     enif_self(env, &owner);
     for(i=0; i<MAX_SEGMENTS; i++) {
         if(segments[i] != NULL) {
-            ERL_NIF_TERM term = enif_make_int(env, i);
-            term_segments[n++] = term;
+            ERL_NIF_TERM atom = enif_make_atom(env, segments[i]->id);
+            term_segments[n++] = atom;
         }
     }
     return enif_make_list_from_array(env, term_segments, n);
@@ -69,21 +69,24 @@ static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
+    char id[256];
     char file[256];
     int x;
     int y;
     double alpha;
     
     enif_self(env, &pid);
-    if(enif_get_string(env, argv[0], file, 256, ERL_NIF_LATIN1) <= 0 ||
-       !enif_get_int(env, argv[1], &x) ||
-       !enif_get_int(env, argv[2], &y) ||
-       !enif_get_double(env, argv[3], &alpha)) {
+    if(!enif_get_atom(env, argv[0], id, 256, ERL_NIF_LATIN1) ||
+       enif_get_string(env, argv[1], file, 256, ERL_NIF_LATIN1) <= 0 ||
+       !enif_get_int(env, argv[2], &x) ||
+       !enif_get_int(env, argv[3], &y) ||
+       !enif_get_double(env, argv[4], &alpha)) {
         return enif_make_badarg(env);
     }
     
     add_logo_args* args = (add_logo_args*)enif_alloc(sizeof(add_logo_args));
     args->pid = pid;
+    strcpy(args->id, id);
     strcpy(args->file, file);
     args->x = x;
     args->y = y;
@@ -99,16 +102,16 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 
 static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
-    int segment;
-    
+    char id[256];
     enif_self(env, &pid);
-    if(!enif_get_int(env, argv[0], &segment)) {
+    
+    if(!enif_get_atom(env, argv[0], id, 256, ERL_NIF_LATIN1)) {
         return enif_make_badarg(env);
     }
-    
+
     delete_segment_args* args = (delete_segment_args*)enif_alloc(sizeof(delete_segment_args));
     args->pid = pid;
-    args->segment = segment;
+    strcpy(args->id, id);
     message_t msg = {CALLBACK, do_delete_segment, args};
     if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
         return ERROR;
@@ -143,8 +146,17 @@ static void* worker_loop(void* args) {
 static void do_add_logo(void* args) {
     add_logo_args* a = (add_logo_args*)args;
     cairo_surface_t *logo = cairo_image_surface_create_from_png(a->file);
-    int segment_idx = next_segment;
+    int segment_idx = next_segment, i;
     
+    for(i=0; i<MAX_SEGMENTS; i++) {
+        if(segments[i] != NULL && !strcmp(segments[i]->id, a->id)) {
+            ERL_NIF_TERM atom = enif_make_atom(local_env, "already_exists");
+            ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
+            enif_send(NULL, &a->pid, local_env, tuple);
+            return;
+        }
+    }
+
     if(segment_idx == -1) {
         ERL_NIF_TERM atom = enif_make_atom(local_env, "no_free_segments");
         ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
@@ -154,6 +166,7 @@ static void do_add_logo(void* args) {
     
     if(cairo_surface_status(logo) == CAIRO_STATUS_SUCCESS) {
         segment_t* new_segment = enif_alloc(sizeof(segment_t));
+        strcpy(new_segment->id, a->id);
         new_segment->x = a->x;
         new_segment->y = a->y;
         new_segment->alpha = a->alpha*255;
@@ -167,8 +180,8 @@ static void do_add_logo(void* args) {
                 break;
             }
         }
-        ERL_NIF_TERM integer = enif_make_int(local_env, segment_idx);
-        ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, OK, integer);
+        ERL_NIF_TERM atom = enif_make_atom(local_env, a->id);
+        ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, OK, atom);
         send_data(local_env, &a->pid, tuple);
     }
     else {
@@ -179,15 +192,25 @@ static void do_add_logo(void* args) {
 
 static void do_delete_segment(void* args) {
     delete_segment_args* a = (delete_segment_args*)args;
-    segment_t* segment = segments[a->segment];
-    if(a->segment >= MAX_SEGMENTS || segment == NULL) {
+
+    segment_t* segment = NULL;
+    int i, index; 
+    for(i=0; i<MAX_SEGMENTS; i++) {
+        if(segments[i] != NULL && !strcmp(segments[i]->id, a->id)) {
+            segment = segments[i];
+            index = i;
+            break;
+        }
+    }
+    
+    if(segment == NULL) {
         ERL_NIF_TERM atom = enif_make_atom(local_env, "no_such_segment");
         ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
         enif_send(NULL, &a->pid, local_env, tuple);
         enif_clear_env(local_env);
     }
     else {
-        segments[a->segment] = NULL;
+        segments[index] = NULL;
         cairo_surface_destroy(segment->surface);
         enif_free(segment);
         send_data(local_env, &a->pid, OK);

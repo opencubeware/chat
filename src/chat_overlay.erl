@@ -2,8 +2,8 @@
 
 %% API
 -export([start_link/0,
-         add_logo/0,
-         add_logo/4,
+         add_logo/1,
+         add_logo/5,
          segments/0,
          delete_segment/1]).
 
@@ -30,12 +30,12 @@ on_load() ->
 start_link() ->
     proc_lib:start_link(?MODULE, init, [self()]).
 
-add_logo() ->
+add_logo(Id) ->
     LogoFile = filename:join(["priv", "assets", "logo_720.png"]),
-    add_logo(LogoFile, 1125, 35, 0.4).
+    add_logo(Id, LogoFile, 1125, 35, 0.4).
 
-add_logo(File, X, Y, Alpha) ->
-    call({add_logo, File, X, Y, Alpha}). 
+add_logo(Id, File, X, Y, Alpha) ->
+    call({add_logo, Id, File, X, Y, Alpha}). 
 
 segments() ->
     call(segments).
@@ -68,8 +68,8 @@ loop(State, Parent, Debug) ->
             loop(State, Parent, Debug)
     end.
 
-handle_request({add_logo, File, X, Y, Alpha}, From, Ref, State) ->
-    {Reply, NewState} = handle_add_logo(File, X, Y, Alpha, State),
+handle_request({add_logo, Id, File, X, Y, Alpha}, From, Ref, State) ->
+    {Reply, NewState} = handle_add_logo(Id, File, X, Y, Alpha, State),
     From ! {reply, Ref, Reply},
     NewState;
 handle_request({delete_segment, Id}, From, Ref, State) ->
@@ -82,8 +82,8 @@ handle_request(segments, From, Ref, State) ->
 handle_request(_Other, _From, _Ref, State) ->
     State.
 
-handle_add_logo(File, X, Y, Alpha, State=#state{segments=Segs}) ->
-    case wait_for(add_logo_nif(File, X, Y, Alpha)) of
+handle_add_logo(Id, File, X, Y, Alpha, State=#state{segments=Segs}) ->
+    case wait_for(add_logo_nif(Id, File, X, Y, Alpha)) of
         {ok, Segment} ->
             NewSegs = [Segment|Segs],
             NewState = State#state{segments=NewSegs},
@@ -144,7 +144,7 @@ round_to_hundreds(Number) ->
 get_segments_nif() ->
     error(nif_not_loaded).
 
-add_logo_nif(_File, _X, _Y, _Alpha) ->
+add_logo_nif(_Id, _File, _X, _Y, _Alpha) ->
     error(nif_not_loaded).
 
 delete_segment_nif(_Id) ->
