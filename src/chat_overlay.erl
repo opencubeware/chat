@@ -2,6 +2,7 @@
 
 %% API
 -export([start_link/0,
+         flush_buffer/0,
          add_logo/1,
          add_logo/5,
          segments/0,
@@ -29,6 +30,9 @@ on_load() ->
 %% ===================================================================
 start_link() ->
     proc_lib:start_link(?MODULE, init, [self()]).
+
+flush_buffer() ->
+    call(flush_buffer).
 
 add_logo(Id) ->
     LogoFile = filename:join(["priv", "assets", "logo_720.png"]),
@@ -68,6 +72,10 @@ loop(State, Parent, Debug) ->
             loop(State, Parent, Debug)
     end.
 
+handle_request(flush_buffer, From, Ref, State) ->
+    ok = flush_buffer_nif(),
+    From ! {reply, Ref, ok},
+    State;
 handle_request({add_logo, Id, File, X, Y, Alpha}, From, Ref, State) ->
     {Reply, NewState} = handle_add_logo(Id, File, X, Y, Alpha, State),
     From ! {reply, Ref, Reply},
@@ -141,6 +149,9 @@ round_to_hundreds(Number) ->
 %% ===================================================================
 %% NIFs
 %% ===================================================================
+flush_buffer_nif() ->
+    error(nif_not_loaded).
+
 get_segments_nif() ->
     error(nif_not_loaded).
 

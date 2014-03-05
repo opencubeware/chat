@@ -67,6 +67,21 @@ static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     return enif_make_list_from_array(env, term_segments, n);
 }
 
+static ERL_NIF_TERM flush_buffer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifPid pid;
+    enif_self(env, &pid);
+
+    flush_buffer_args* args = (flush_buffer_args*)enif_alloc(sizeof(flush_buffer_args));
+    args->pid = pid;
+    message_t msg = {CALLBACK, do_flush_buffer, args};
+    if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
+        return ERROR;
+    }
+    else {
+        return OK;
+    }
+}
+
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
     char id[256];
@@ -143,6 +158,11 @@ static void* worker_loop(void* args) {
     return NULL;
 }
 
+static void do_flush_buffer(void* args) {
+    flush_buffer_args* a = (flush_buffer_args*)args;
+    send_data(local_env, &a->pid, OK);
+}
+
 static void do_add_logo(void* args) {
     add_logo_args* a = (add_logo_args*)args;
     cairo_surface_t *logo = cairo_image_surface_create_from_png(a->file);
@@ -153,6 +173,7 @@ static void do_add_logo(void* args) {
             ERL_NIF_TERM atom = enif_make_atom(local_env, "already_exists");
             ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
             enif_send(NULL, &a->pid, local_env, tuple);
+            enif_clear_env(local_env);
             return;
         }
     }
@@ -161,6 +182,7 @@ static void do_add_logo(void* args) {
         ERL_NIF_TERM atom = enif_make_atom(local_env, "no_free_segments");
         ERL_NIF_TERM tuple = enif_make_tuple(local_env, 2, ERROR, atom);
         enif_send(NULL, &a->pid, local_env, tuple);
+        enif_clear_env(local_env);
         return;
     }
     

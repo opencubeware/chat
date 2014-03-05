@@ -17,9 +17,7 @@ typedef struct {
 // structs for carrying arguments for worker thread callbacks
 typedef struct {
     ErlNifPid pid;
-    int width;
-    int height;
-} new_args;
+} flush_buffer_args;
 
 typedef struct {
     ErlNifPid pid;
@@ -56,11 +54,13 @@ static void unload(ErlNifEnv* env, void* priv_data);
 
 // NIFs
 static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM flush_buffer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ErlNifFunc nif_funcs[] =
 {
     {"get_segments_nif", 0, get_segments},
+    {"flush_buffer_nif", 0, flush_buffer},
     {"add_logo_nif", 5, add_logo},
     {"delete_segment_nif", 1, delete_segment}
 };
@@ -68,6 +68,7 @@ static ErlNifFunc nif_funcs[] =
 // functions that are called in the context of a worker thread
 // only these are supposed to modify state fields
 static void* worker_loop(void*);
+static void do_flush_buffer(void*);
 static void do_add_logo(void*);
 static void do_delete_segment(void*);
 static void send_data(ErlNifEnv*, ErlNifPid*, ERL_NIF_TERM);

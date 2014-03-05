@@ -40,6 +40,7 @@ init([Output]) ->
     App = filename:join([priv, lib, chat_camera]),
     Cmd = App ++ " > " ++ Output,
     Port = erlang:open_port({spawn, Cmd}, [exit_status]),
+    chat_overlay:flush_buffer(),
     folsom_metrics:notify({camera_starts, {inc, 1}}),
     {ok, #state{port=Port}}.
 
