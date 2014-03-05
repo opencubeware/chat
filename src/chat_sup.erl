@@ -26,6 +26,8 @@ init([]) ->
                  permanent, brutal_kill, worker, [chat_metrics]},
                 {chat_overlay, {chat_overlay, start_link, []},
                  permanent, brutal_kill, worker, [chat_overlay]},
+                {chat_dnssd, {chat_dnssd, start_link, []},
+                 permanent, brutal_kill, worker, [chat_dnssd]},
                 {chat_camera_sup, {chat_camera_sup, start_link, []},
                  permanent, 1500, supervisor, [chat_camera_sup]}
                 ]} }.

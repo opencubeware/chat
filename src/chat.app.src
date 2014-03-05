@@ -6,7 +6,8 @@
   {applications, [
                   kernel,
                   stdlib,
-                  folsom
+                  folsom,
+                  dnssd
                  ]},
   {mod, { chat_app, []}},
   {env, []}
