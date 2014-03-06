@@ -5,6 +5,9 @@
          flush_buffer/0,
          add_logo/1,
          add_logo/5,
+         add_time/1,
+         add_time/3,
+         delete_time/0,
          segments/0,
          delete_segment/1]).
 
@@ -13,9 +16,9 @@
          system_continue/3,
          system_terminate/4]).
 
--record(state, {segments = [], dummy}).
+-record(state, {segments = [], time}).
 
--define(NIF_TIMEOUT, 2000).
+-define(NIF_TIMEOUT, 4000).
 
 -on_load(on_load/0).
 %% ===================================================================
@@ -40,6 +43,15 @@ add_logo(Id) ->
 
 add_logo(Id, File, X, Y, Alpha) ->
     call({add_logo, Id, File, X, Y, Alpha}). 
+
+add_time(Interval) ->
+    add_time(Interval, 20, 20).
+
+add_time(Interval, X, Y) ->
+    call({add_time, Interval, X, Y}).
+
+delete_time() ->
+    call(delete_time).
 
 segments() ->
     call(segments).
@@ -66,6 +78,9 @@ loop(State, Parent, Debug) ->
         {fps, Fps} ->
             NewState = handle_fps(Fps, State),
             loop(NewState, Parent, Debug);
+        {add_time, Interval, X, Y} ->
+            {_, NewState} = handle_add_time(Interval, X, Y, State),
+            loop(NewState, Parent, Debug);
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, Debug, State);
         _ ->
@@ -78,6 +93,14 @@ handle_request(flush_buffer, From, Ref, State) ->
     State;
 handle_request({add_logo, Id, File, X, Y, Alpha}, From, Ref, State) ->
     {Reply, NewState} = handle_add_logo(Id, File, X, Y, Alpha, State),
+    From ! {reply, Ref, Reply},
+    NewState;
+handle_request({add_time, Interval, X, Y}, From, Ref, State) ->
+    {Reply, NewState} = handle_add_time(Interval, X, Y, State),
+    From ! {reply, Ref, Reply},
+    NewState;
+handle_request(delete_time, From, Ref, State) ->
+    {Reply, NewState} = handle_delete_time(State),
     From ! {reply, Ref, Reply},
     NewState;
 handle_request({delete_segment, Id}, From, Ref, State) ->
@@ -98,6 +121,28 @@ handle_add_logo(Id, File, X, Y, Alpha, State=#state{segments=Segs}) ->
             {{ok, Segment}, NewState};
         Other ->
             {Other, State}
+    end.
+
+handle_add_time(Interval, X, Y, State=#state{segments=Segs}) ->
+    Timer = erlang:send_after(Interval, self(),
+                              {add_time, Interval, X, Y}),
+    State1 = State#state{time=Timer},
+    case wait_for(add_time_nif(X, Y)) of
+        {ok, Segment} ->
+            NewSegs = [Segment|Segs],
+            NewState = State1#state{segments=NewSegs},
+            {{ok, Segment}, NewState};
+        Other ->
+            {Other, State1}
+    end.
+
+handle_delete_time(State) ->
+    case handle_delete_segment(time, State) of
+        {ok, #state{time=Timer}=State1} ->
+            erlang:cancel_timer(Timer),
+            {ok, State1};
+        Other ->
+            Other
     end.
 
 handle_delete_segment(Id, State=#state{segments=Segs}) ->
@@ -153,6 +198,9 @@ flush_buffer_nif() ->
     error(nif_not_loaded).
 
 get_segments_nif() ->
+    error(nif_not_loaded).
+
+add_time_nif(_X, _Y) ->
     error(nif_not_loaded).
 
 add_logo_nif(_Id, _File, _X, _Y, _Alpha) ->

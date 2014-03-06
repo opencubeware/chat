@@ -1,4 +1,5 @@
-.PHONY: all deps test unit
+.PHONY: all deps test unit shell
+EVAL="application:start(folsom), application:start(dnssd), application:start(chat)"
 
 all: rel
 
@@ -24,3 +25,6 @@ test:
 
 unit:
 	./rebar eunit skip_deps=true
+
+shell:
+	erl -pa ebin -pa deps/*/ebin -smp enable +A 2 -config etc/chat.config -setcookie ocw -eval $(EVAL)
