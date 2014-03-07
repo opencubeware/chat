@@ -8,8 +8,6 @@
          system_continue/3,
          system_terminate/4]).
 
--record(state, {}).
-
 -define(TIMEOUT, 5000).
 
 %% ===================================================================
@@ -26,7 +24,7 @@ init(Parent) ->
     Debug = sys:debug_options([]),
     {ok, _} = register_service(),
     proc_lib:init_ack(Parent, {ok, self()}),
-    loop(#state{}, Parent, Debug).
+    loop(no_state, Parent, Debug).
 
 loop(State, Parent, Debug) ->
     receive
@@ -52,6 +50,7 @@ register_service() ->
     receive
         {dnssd, Ref, {register, _, {RegisteredName, _, _}}} ->
             RegisteredAtom = binary_to_atom(RegisteredName, utf8),
+            net_kernel:stop(),
             {ok, _} = net_kernel:start([RegisteredAtom, longnames])
     after ?TIMEOUT ->
         {error, timeout}

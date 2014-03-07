@@ -182,7 +182,10 @@ call(Request, Timeout) ->
 
 wait_for(ok) ->
     receive
-        Reply -> Reply
+        ok              -> ok;
+        {ok, Term}      -> {ok, Term};
+        error           -> error;
+        {error, Reason} -> {error, Reason}
     after ?NIF_TIMEOUT ->
         {error, timeout}
     end;
