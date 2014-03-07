@@ -45,6 +45,7 @@ init([Output]) ->
     {ok, #state{port=Port}}.
 
 handle_call(stop, _From, State) ->
+    chat_overlay:delete_segments(),
     {stop, shutdown, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,

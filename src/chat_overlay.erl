@@ -9,6 +9,7 @@
          add_time/3,
          delete_time/0,
          segments/0,
+         delete_segments/0,
          delete_segment/1]).
 
 %% Special process callbacks
@@ -55,6 +56,9 @@ delete_time() ->
 
 segments() ->
     call(segments).
+
+delete_segments() ->
+    call(delete_segments).
 
 delete_segment(Id) ->
     call({delete_segment, Id}).
@@ -107,6 +111,10 @@ handle_request({delete_segment, Id}, From, Ref, State) ->
     {Reply, NewState} = handle_delete_segment(Id, State),
     From ! {reply, Ref, Reply},
     NewState;
+handle_request(delete_segments, From, Ref, State) ->
+    NewState = handle_delete_segments(State),
+    From ! {reply, Ref, ok},
+    NewState;
 handle_request(segments, From, Ref, State) ->
     From ! {reply, Ref, State#state.segments},
     State;
@@ -124,14 +132,17 @@ handle_add_logo(Id, File, X, Y, Alpha, State=#state{segments=Segs}) ->
     end.
 
 handle_add_time(Interval, X, Y, State=#state{segments=Segs}) ->
-    Timer = erlang:send_after(Interval, self(),
-                              {add_time, Interval, X, Y}),
-    State1 = State#state{time=Timer},
+    State1 = bump_timer(Interval, X, Y, State),
     case wait_for(add_time_nif(X, Y)) of
         {ok, Segment} ->
-            NewSegs = [Segment|Segs],
-            NewState = State1#state{segments=NewSegs},
-            {{ok, Segment}, NewState};
+            case lists:member(Segment, Segs) of
+                true -> 
+                    {{ok, Segment}, State1};
+                false ->
+                    NewSegs = [Segment|Segs],
+                    NewState = State1#state{segments=NewSegs},
+                    {{ok, Segment}, NewState}
+            end;
         Other ->
             {Other, State1}
     end.
@@ -154,6 +165,16 @@ handle_delete_segment(Id, State=#state{segments=Segs}) ->
         Other ->
             {Other, State}
     end.
+
+handle_delete_segments(State=#state{segments=Segs}) ->
+    lists:foldl(fun
+            (time, AccState) ->
+                {ok, NewState} = handle_delete_time(AccState),
+                NewState;
+            (Segment, AccState) ->
+                {ok, NewState} = handle_delete_segment(Segment, AccState),
+                NewState
+        end, State, Segs).
 
 handle_fps(Fps, State) ->
     folsom_metrics:notify({fps, round_to_hundreds(Fps)}),
@@ -194,6 +215,17 @@ wait_for(Other) ->
 
 round_to_hundreds(Number) ->
     erlang:round(Number*10) / 10.
+
+bump_timer(Interval, X, Y, State=#state{time=OldTimer}) ->
+    case OldTimer of
+        undefined ->
+            ok;
+        Ref ->
+            erlang:cancel_timer(Ref)
+    end,
+    Timer = erlang:send_after(Interval, self(),
+                              {add_time, Interval, X, Y}),
+    State#state{time=Timer}.
 %% ===================================================================
 %% NIFs
 %% ===================================================================
