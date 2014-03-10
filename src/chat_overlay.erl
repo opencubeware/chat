@@ -41,7 +41,7 @@ flush_buffer() ->
 
 add_logo(Id) ->
     LogoFile = filename:join(["priv", "assets", "logo_720.png"]),
-    add_logo(Id, LogoFile, 1125, 35, 0.4).
+    add_logo(Id, LogoFile, 1185, 20, 0.4).
 
 add_logo(Id, File, X, Y, Alpha) ->
     call({add_logo, Id, File, X, Y, Alpha}). 
