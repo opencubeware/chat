@@ -115,6 +115,65 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     }
 }
 
+static ERL_NIF_TERM add_info(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifPid pid;
+    char event[64];
+    char round[64] = "";
+    char competition[64] = "";
+    char year[64];
+    char info[128];
+    ERL_NIF_TERM *eventtuple, *competitiontuple;
+    int eventarity, competitionarity;
+
+    enif_self(env, &pid);
+
+    if(enif_get_tuple(env, argv[0], &eventarity,
+       (const ERL_NIF_TERM**)&eventtuple) && eventarity == 2) {
+        if(!enif_get_string(env, eventtuple[0], event, 64, ERL_NIF_LATIN1) ||
+           !enif_get_string(env, eventtuple[1], round, 64, ERL_NIF_LATIN1)) {
+            return enif_make_badarg(env);
+        }
+    }
+    else {
+        if(!enif_get_string(env, argv[0], event, 64, ERL_NIF_LATIN1)) {
+            return enif_make_badarg(env);
+        }
+    }
+
+    if(enif_get_tuple(env, argv[1], &competitionarity,
+        (const ERL_NIF_TERM**)&competitiontuple) && competitionarity == 2) {
+        if(!enif_get_string(env, competitiontuple[0], competition, 64, ERL_NIF_LATIN1) ||
+           !enif_get_string(env, competitiontuple[1], year, 64, ERL_NIF_LATIN1)) {
+            return enif_make_badarg(env);
+        }
+    }
+    else {
+        if(!enif_get_string(env, argv[1], year, 64, ERL_NIF_LATIN1)) {
+            return enif_make_badarg(env);
+        }
+    }
+
+    if(!enif_get_string(env, argv[2], info, 128, ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    add_info_args* args = (add_info_args*)enif_alloc(sizeof(add_info_args));
+    args->pid = pid;
+    strcpy(args->event, event);
+    strcpy(args->competition, competition);
+    strcpy(args->round, round);
+    strcpy(args->year, year);
+    strcpy(args->info, info);
+
+    message_t msg = {CALLBACK, do_add_info, args};
+    if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
+        return ERROR;
+    }
+    else {
+        return OK;
+    }
+}
+
 static ERL_NIF_TERM add_time(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
     int x;
@@ -205,6 +264,85 @@ static void do_add_logo(void* args) {
         enif_send(NULL, &a->pid, local_env, ERROR);
         enif_clear_env(local_env);
     }
+}
+
+static void do_add_info(void* args) {
+    double k,l,m,n;
+    add_info_args* a = (add_info_args*)args;
+
+    cairo_surface_t* surface;
+    cairo_t* context;
+
+    surface = cairo_image_surface_create_from_png("priv/assets/line_720.png");
+    context = cairo_create(surface);
+
+    if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        enif_send(NULL, &a->pid, local_env, ERROR);
+        enif_clear_env(local_env);
+        return;
+    }
+
+    cairo_set_source_rgb(context, 1.0, 1.0, 1.0);
+    cairo_move_to(context, 20, 32);
+    cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+                           CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(context, 19.);
+    cairo_text_path(context, a->event);
+    cairo_get_current_point(context, &k, &l);
+    cairo_fill(context);
+
+    if(strcmp(a->round, "")) {
+        cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+                CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_move_to(context, 5+k, 32);
+        cairo_show_text(context, a->round);
+    }
+
+    //draw year
+    cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+            CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_set_font_size(context, 14.);
+    cairo_move_to(context, 0, 0);
+    cairo_text_path(context, a->year);
+    cairo_get_current_point(context, &k, &l);
+    cairo_new_path(context);
+    cairo_move_to(context, 770-k, 32);
+    cairo_text_path(context, a->year);
+    cairo_fill(context);
+
+    //draw competition name 
+    if(strcmp(a->competition, "")) {
+        cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+                CAIRO_FONT_WEIGHT_BOLD);
+        cairo_new_path(context);
+        cairo_move_to(context, 0, 0);
+        cairo_text_path(context, a->competition);
+        cairo_get_current_point(context, &m, &n);
+        cairo_new_path(context);
+        cairo_move_to(context, 770-k-3-m, 32);
+        cairo_text_path(context, a->competition);
+        cairo_fill(context);
+    }
+
+    //add info text
+    cairo_set_source_rgb(context, 0.0, 0.0, 0.0);
+    cairo_move_to(context, 25, 81);
+    cairo_select_font_face(context, "Arial", CAIRO_FONT_SLANT_NORMAL,
+            CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(context, 15.);
+    cairo_show_text(context, a->info);
+
+    //add segment, actually
+    segment_t* segment = enif_alloc(sizeof(segment_t));
+    strcpy(segment->id, "info");
+    segment->x = 207;
+    segment->y = 550;
+    segment->alpha = 255;
+    segment->surface = surface;
+    add_segment(segment, a->pid, 1);
+
+    //cleanup cairo context
+    cairo_destroy(context);
 }
 
 static void do_add_time(void* args) {
@@ -344,8 +482,8 @@ static void send_data(ErlNifEnv *env, ErlNifPid *pid, ERL_NIF_TERM term) {
                         unsigned char g = data[start+1];
                         unsigned char b = data[start];
                         unsigned char ch_y = (unsigned char)(0.299*r+0.587*g+0.114*b);
-                        unsigned char ch_v = (unsigned char)(0.500*r-0.419*g-0.081*b)+128;
-                        unsigned char ch_u = (unsigned char)(-0.169*r-0.331*g-0.500*b)+128;
+                        unsigned char ch_v = (unsigned char)(0.500*r-0.419*g-0.081*b+128);
+                        unsigned char ch_u = (unsigned char)(-0.169*r-0.331*g+0.500*b+128);
                         pixel_t pixel;
                         pixel.alpha = segment->alpha*root_alpha;
                         pixel.x = x+segment->x;
