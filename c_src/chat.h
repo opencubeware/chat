@@ -7,7 +7,6 @@
 #define VIDEO_FPS 25
 #define VIDEO_WIDTH 1280
 #define VIDEO_HEIGHT 720
-#define BITRATE 10000000
 #define MAX_SEGMENTS 10
 
 typedef enum {CALLBACK, FPS} MESSAGE_TYPE;

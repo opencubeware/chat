@@ -21,6 +21,7 @@
 typedef struct {
     int width;
     int height;
+    int bitrate;
     MMAL_COMPONENT_T *camera;
     MMAL_COMPONENT_T *encoder;
     MMAL_COMPONENT_T *preview;
@@ -333,7 +334,7 @@ int setup_encoder(PORT_USERDATA *userdata) {
 
     // Only supporting H264 at the moment
     encoder_output_port->format->encoding = MMAL_ENCODING_H264;
-    encoder_output_port->format->bitrate = BITRATE; 
+    encoder_output_port->format->bitrate = userdata->bitrate; 
 
     encoder_output_port->buffer_size = encoder_output_port->buffer_size_recommended;
 
@@ -445,6 +446,7 @@ int main(int argc, char** argv) {
     
     userdata.width = VIDEO_WIDTH;
     userdata.height = VIDEO_HEIGHT;
+    userdata.bitrate = atoi(argv[1])*1000;
 
     pixel_buffer = (pixel_t*)(malloc(sizeof(pixel_t)*DATALEN));
     

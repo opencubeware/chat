@@ -3,8 +3,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1,
-         start/1,
+-export([start_link/2,
+         start/2,
          stop/0]).
 
 %% gen_server callbacks
@@ -20,13 +20,13 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-start_link(Output) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Output], []).
+start_link(Bitrate, Output) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Bitrate, Output], []).
 
-start(Output) ->
+start(Bitrate, Output) ->
     supervisor:terminate_child(chat_camera_sup, ?MODULE),
     supervisor:delete_child(chat_camera_sup, ?MODULE),
-    Spec = {?MODULE, {?MODULE, start_link, [Output]},
+    Spec = {?MODULE, {?MODULE, start_link, [Bitrate, Output]},
             transient, 1000, worker, [?MODULE]},
     supervisor:start_child(chat_camera_sup, Spec).
 
@@ -36,10 +36,9 @@ stop() ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Output]) ->
-    App = filename:join([priv, lib, chat_camera]),
-    Cmd = App ++ " > " ++ Output,
-    Port = erlang:open_port({spawn, Cmd}, [exit_status]),
+init([Bitrate, Output]) ->
+    Cmd = cmd(Bitrate, Output),
+    Port = erlang:open_port({spawn, Cmd}, [exit_status, binary]),
     chat_overlay:flush_buffer(),
     folsom_metrics:notify({camera_starts, {inc, 1}}),
     {ok, #state{port=Port}}.
@@ -68,3 +67,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+cmd(Bitrate, {rtmp, List}) when is_list(List) ->
+    app(Bitrate) ++ " | " ++
+    "ffmpeg -i - -vcodec copy -an -f flv " ++ List ++ " 2> /dev/null";
+cmd(Bitrate, Other) ->
+    app(Bitrate) ++ " > " ++ Other.
+
+app(Bitrate) ->
+    filename:join([priv, lib, chat_camera]) ++ " " ++ integer_to_list(Bitrate).
+
