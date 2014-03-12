@@ -5,7 +5,8 @@
 %% API
 -export([start_link/2,
          start/2,
-         stop/0]).
+         stop/0,
+         get_bitrate/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -15,7 +16,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port}).
+-record(state, {port, bitrate}).
 
 %%%===================================================================
 %%% API
@@ -33,6 +34,9 @@ start(Bitrate, Output) ->
 stop() ->
     gen_server:call(?MODULE, stop).
 
+get_bitrate() ->
+    gen_server:call(?MODULE, get_bitrate).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -41,8 +45,10 @@ init([Bitrate, Output]) ->
     Port = erlang:open_port({spawn, Cmd}, [exit_status, binary]),
     chat_overlay:flush_buffer(),
     folsom_metrics:notify({camera_starts, {inc, 1}}),
-    {ok, #state{port=Port}}.
+    {ok, #state{port=Port, bitrate=Bitrate}}.
 
+handle_call(get_bitrate, _From, #state{bitrate=Bitrate}=State) ->
+    {reply, Bitrate, State};
 handle_call(stop, _From, State) ->
     chat_overlay:delete_segments(),
     {stop, shutdown, ok, State};

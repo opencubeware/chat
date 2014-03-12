@@ -22,8 +22,8 @@ start_link() ->
 
 init([]) ->
     {ok, { {one_for_one, 5, 10}, [
-                {chat_metrics, {chat_metrics, start_link, []},
-                 permanent, brutal_kill, worker, [chat_metrics]},
+                {chat_remote, {chat_remote, start_link, []},
+                 permanent, brutal_kill, worker, [chat_remote]},
                 {chat_overlay, {chat_overlay, start_link, []},
                  permanent, brutal_kill, worker, [chat_overlay]},
                 {chat_dnssd, {chat_dnssd, start_link, []},
