@@ -13,6 +13,8 @@
 
 #include "chat.h"
 
+#include <errno.h>
+
 
 #define MMAL_CAMERA_PREVIEW_PORT 0
 #define MMAL_CAMERA_VIDEO_PORT 1
@@ -282,11 +284,14 @@ int setup_camera(PORT_USERDATA *userdata) {
     fill_port_buffer(userdata->camera_video_port, userdata->camera_video_port_pool);
 
 
-    MMAL_PARAMETER_MIRROR_T mirror = {{MMAL_PARAMETER_MIRROR, sizeof(MMAL_PARAMETER_MIRROR_T)}, MMAL_PARAM_MIRROR_NONE};
-    mirror.value = MMAL_PARAM_MIRROR_BOTH;
-    mmal_port_parameter_set(camera->output[0], &mirror.hdr);
-    mmal_port_parameter_set(camera->output[1], &mirror.hdr);
-    mmal_port_parameter_set(camera->output[2], &mirror.hdr);
+    /*MMAL_PARAMETER_MIRROR_T mirror = {{MMAL_PARAMETER_MIRROR, sizeof(MMAL_PARAMETER_MIRROR_T)}, MMAL_PARAM_MIRROR_NONE};*/
+    /*mirror.value = MMAL_PARAM_MIRROR_BOTH;*/
+    /*mmal_port_parameter_set(camera->output[0], &mirror.hdr);*/
+    /*mmal_port_parameter_set(camera->output[1], &mirror.hdr);*/
+    /*mmal_port_parameter_set(camera->output[2], &mirror.hdr);*/
+    mmal_port_parameter_set_int32(camera->output[0], MMAL_PARAMETER_ROTATION, 90);
+    mmal_port_parameter_set_int32(camera->output[1], MMAL_PARAMETER_ROTATION, 90);
+    mmal_port_parameter_set_int32(camera->output[2], MMAL_PARAMETER_ROTATION, 90);
 
     if (mmal_port_parameter_set_boolean(camera_video_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS) {
         //printf("%s: Failed to start capture\n", __func__);
@@ -473,7 +478,7 @@ int main(int argc, char** argv) {
 
     data_attr.mq_msgsize = DATASIZE;
     data_attr.mq_flags = 0;
-    data_attr.mq_maxmsg = 10;
+    data_attr.mq_maxmsg = 5;
     data_attr.mq_curmsgs = 0;
     reader = mq_open(DATA_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, PERMS, &data_attr);
     
