@@ -478,7 +478,7 @@ int main(int argc, char** argv) {
 
     data_attr.mq_msgsize = DATASIZE;
     data_attr.mq_flags = 0;
-    data_attr.mq_maxmsg = 5;
+    data_attr.mq_maxmsg = 2;
     data_attr.mq_curmsgs = 0;
     reader = mq_open(DATA_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, PERMS, &data_attr);
     
