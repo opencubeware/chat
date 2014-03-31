@@ -74,7 +74,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 handle_preview() ->
     Cmd = lists:concat(["raspistill -w 640 -h 480 "
-                        " -q 100 -t 1 -vf -hf -o -"]),
+                        " -q 100 -t 1 -rot 90 -o -"]),
     Port = erlang:open_port({spawn, Cmd}, [binary, exit_status]),
     capture_preview(<<>>, Port).
 

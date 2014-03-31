@@ -1,8 +1,15 @@
 #include "chat_overlay.h"
 
 #include <errno.h>
+#include <sys/resource.h>
 
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
+    // set limits for POSIX queue size
+    struct rlimit limits;
+    limits.rlim_cur = (rlim_t)(4*DATASIZE);
+    limits.rlim_max = (rlim_t)(4*DATASIZE);
+    setrlimit(RLIMIT_MSGQUEUE, &limits);
+
     // build local environment
     local_env = enif_alloc_env();
     
@@ -27,8 +34,18 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     reader = mq_open(WORKER_QUEUE, O_RDONLY);
     data_writer = mq_open(DATA_QUEUE, O_CREAT | O_WRONLY | O_NONBLOCK, PERMS, &data_attr);
     
-    if(writer == -1 || reader == -1 || data_writer == -1) {
-        perror("chat_overlay NIF loading error: ");
+    if(writer == -1) {
+        perror("chat_overlay NIF loading error (writer queue): ");
+        return 1;
+    }
+
+    if(reader == -1) {
+        perror("chat_overlay NIF loading error (reader queue): ");
+        return 1;
+    }
+
+    if(data_writer == -1) {
+        perror("chat_overlay NIF loading error (data_writer queue): ");
         return 1;
     }
     

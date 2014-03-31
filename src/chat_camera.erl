@@ -73,6 +73,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+cmd(Bitrate, {yt, List}) when is_list(List) ->
+    app(Bitrate) ++ " | " ++
+    "ffmpeg -ar 44100 -f s16le -ac 2 -i /dev/zero -i - -vcodec copy "
+    "-acodec aac -ab 128k -f flv -strict experimental -shortest "
+    ++ List ++ " 2> /dev/null";
 cmd(Bitrate, {rtmp, List}) when is_list(List) ->
     app(Bitrate) ++ " | " ++
     "ffmpeg -i - -vcodec copy -an -f flv " ++ List ++ " 2> /dev/null";
@@ -80,5 +85,6 @@ cmd(Bitrate, Other) ->
     app(Bitrate) ++ " > " ++ Other.
 
 app(Bitrate) ->
-    filename:join([priv, lib, chat_camera]) ++ " " ++ integer_to_list(Bitrate).
+    filename:join([priv, lib, chat_camera]) ++ " " ++
+    integer_to_list(Bitrate).
 
