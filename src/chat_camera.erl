@@ -16,7 +16,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, bitrate}).
+-record(state, {port, bitrate, via, buffer, buffer_size, buffer_left}).
 
 %%%===================================================================
 %%% API
@@ -42,10 +42,12 @@ get_bitrate() ->
 %%%===================================================================
 init([Bitrate, Output]) ->
     Cmd = cmd(Bitrate, Output),
+    maybe_start_silence(Output),
     Port = erlang:open_port({spawn, Cmd}, [exit_status, binary]),
     chat_overlay:flush_buffer(),
     folsom_metrics:notify({camera_starts, {inc, 1}}),
-    {ok, #state{port=Port, bitrate=Bitrate}}.
+    State = initial_state(Port, Bitrate, Output),
+    {ok, State}.
 
 handle_call(get_bitrate, _From, #state{bitrate=Bitrate}=State) ->
     {reply, Bitrate, State};
@@ -59,6 +61,20 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({Port, {data, Data}}, #state{port=Port,
+                                         via=Pid,
+                                         buffer=Buf,
+                                         buffer_left=BLeft,
+                                         buffer_size=BSize}=State) ->
+    Size = byte_size(Data),
+    NewBuf = <<Buf/binary, Data/binary>>,
+    case BLeft-Size of
+        Rem when Rem > 0 ->
+            {noreply, State#state{buffer=NewBuf, buffer_left=Rem}};
+        _ ->
+            Pid ! {?MODULE, NewBuf},
+            {noreply, State#state{buffer = <<>>, buffer_left=BSize}}
+    end;
 handle_info({Port, {exit_status, _}}, #state{port=Port}=State) ->
     {stop, chat_camera_exited, State};
 handle_info(_Info, State) ->
@@ -73,11 +89,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+maybe_start_silence({yt, _}) ->
+    os:cmd("kill $(ps aux | grep 'chat_silence' | awk '{print $2}')"),
+    Cmd = filename:join([priv, lib, chat_silence]),
+    erlang:open_port({spawn, Cmd}, [exit_status, binary]);
+maybe_start_silence(_) ->
+    ok.
+
+initial_state(Port, Bitrate, {via, Pid, BSize}) ->
+    #state{port=Port, bitrate=Bitrate,
+           via=Pid,
+           buffer_size=BSize,
+           buffer_left=BSize,
+           buffer = <<>>};
+initial_state(Port, Bitrate, _) ->
+    #state{port=Port, bitrate=Bitrate}.
+
+cmd(Bitrate, {via, _, _}) ->
+    app(Bitrate);
 cmd(Bitrate, {yt, List}) when is_list(List) ->
     app(Bitrate) ++ " | " ++
-    "ffmpeg -ar 44100 -f s16le -ac 2 -i /dev/zero -i - -vcodec copy "
+    "ffmpeg -ar 44100 -ac 1 -f s16le -i /tmp/silence.aac -i - -vcodec copy "
     "-acodec aac -ab 128k -f flv -strict experimental -shortest "
-    ++ List ++ " 2> /dev/null";
+    ++ List ++ " 2> /dev/null ";
 cmd(Bitrate, {rtmp, List}) when is_list(List) ->
     app(Bitrate) ++ " | " ++
     "ffmpeg -i - -vcodec copy -an -f flv " ++ List ++ " 2> /dev/null";
@@ -87,4 +121,3 @@ cmd(Bitrate, Other) ->
 app(Bitrate) ->
     filename:join([priv, lib, chat_camera]) ++ " " ++
     integer_to_list(Bitrate).
-
