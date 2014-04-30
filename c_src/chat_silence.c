@@ -2,11 +2,12 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <string.h>
 #include <fcntl.h>
 #include <stdio.h>
 
 #define FIFO "/tmp/silence.aac"
-#define PERMS (S_IRUSR | S_IWUSR)
+#define PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
 // program generates PCM 16bit silence stream
 // and saves it to a named pipe
@@ -18,8 +19,7 @@ int main(int argc, char** argv) {
         chunk[i] = 0;
     }
     
-    unlink(FIFO);
-    if(mkfifo(FIFO, PERMS)) {
+    if(mkfifo(FIFO, PERMS) == -1 && errno != EEXIST) {
        perror("Error while creating FIFO");
        return 1;
     } 

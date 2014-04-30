@@ -62,6 +62,7 @@ REMSH="$ERTS_PATH/erl $REMSH_NAME_ARG $REMSH_REMSH_ARG $COOKIE_ARG"
 # Check the first argument for instructions
 case "$1" in
     start)
+        mkfifo /tmp/silence.aac
         # start epmd  and avahi
         sudo /etc/init.d/avahi-daemon start
         epmd -daemon
