@@ -90,7 +90,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 maybe_start_silence({yt, _}) ->
-    os:cmd("kill $(ps aux | grep 'chat_silence' | awk '{print $2}')"),
+    os:cmd("kill $(ps ax | grep 'chat_silence' | awk '{print $1}')"),
     Cmd = filename:join([priv, lib, chat_silence]),
     erlang:open_port({spawn, Cmd}, [exit_status, binary]);
 maybe_start_silence(_) ->
