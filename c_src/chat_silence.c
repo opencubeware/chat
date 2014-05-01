@@ -14,8 +14,8 @@
 // (882 zeros every 1/100 s = 44100 Hz mono)
 int main(int argc, char** argv) {
     int i = 0;
-    unsigned char chunk[882];
-    for(i=0; i<882; i++) {
+    unsigned char chunk[10000];
+    for(i=0; i<10000; i++) {
         chunk[i] = 0;
     }
     
@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     int fifo = open(FIFO, O_WRONLY);
     for(;;) {
         write(fifo, chunk, sizeof(chunk));
-        usleep(10000);
+        usleep(100000);
     }
 
     return 0;

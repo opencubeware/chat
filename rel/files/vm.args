@@ -2,5 +2,5 @@
 -heart
 +A 2
 -config etc/chat.config
--env ERL_FULLSWEEP_AFTER 10
+-env ERL_FULLSWEEP_AFTER 1024
 -smp enable
