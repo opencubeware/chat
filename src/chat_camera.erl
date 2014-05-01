@@ -16,7 +16,8 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, bitrate, via, buffer, buffer_size, buffer_left}).
+-record(state, {camera_port, ffmpeg_port,
+                bitrate, via, buffer, buffer_size, buffer_left}).
 
 %%%===================================================================
 %%% API
@@ -41,12 +42,13 @@ get_bitrate() ->
 %%% gen_server callbacks
 %%%===================================================================
 init([Bitrate, Output]) ->
-    Cmd = cmd(Bitrate, Output),
+    process_flag(trap_exit, true),
     maybe_start_silence(Output),
-    Port = erlang:open_port({spawn, Cmd}, [exit_status, binary]),
+    {CameraCmd, FfmpegCmd} = cmd(Bitrate, Output),
+    {CameraPort, FfmpegPort} = open_ports(CameraCmd, FfmpegCmd),
+    State = initial_state(CameraPort, FfmpegPort, Bitrate, Output),
     chat_overlay:flush_buffer(),
     folsom_metrics:notify({camera_starts, {inc, 1}}),
-    State = initial_state(Port, Bitrate, Output),
     {ok, State}.
 
 handle_call(get_bitrate, _From, #state{bitrate=Bitrate}=State) ->
@@ -61,7 +63,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({Port, {data, Data}}, #state{port=Port,
+handle_info({Port, {data, Data}}, #state{camera_port=Port,
                                          via=Pid,
                                          buffer=Buf,
                                          buffer_left=BLeft,
@@ -75,12 +77,16 @@ handle_info({Port, {data, Data}}, #state{port=Port,
             Pid ! {?MODULE, NewBuf},
             {noreply, State#state{buffer = <<>>, buffer_left=BSize}}
     end;
-handle_info({Port, {exit_status, _}}, #state{port=Port}=State) ->
+handle_info({Port, {exit_status, _}}, #state{ffmpeg_port=Port}=State) ->
+    {stop, ffmpeg_exited, State};
+handle_info({Port, {exit_status, _}}, #state{camera_port=Port}=State) ->
     {stop, chat_camera_exited, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    kill_processes(chat_silence),
+    kill_processes(ffmpeg),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -89,35 +95,55 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+open_ports(CameraCmd, FfmpegCmd) ->
+    CameraPort = erlang:open_port({spawn, CameraCmd}, [exit_status, binary]),
+    FfmpegPort = case FfmpegCmd of
+        undefined ->
+            undefined;
+        _ ->
+            erlang:open_port({spawn, FfmpegCmd}, [exit_status, binary])
+    end,
+    {CameraPort, FfmpegPort}.
+
 maybe_start_silence({yt, _}) ->
-    os:cmd("kill $(ps ax | grep 'chat_silence' | awk '{print $1}')"),
     Cmd = filename:join([priv, lib, chat_silence]),
     erlang:open_port({spawn, Cmd}, [exit_status, binary]);
 maybe_start_silence(_) ->
     ok.
 
-initial_state(Port, Bitrate, {via, Pid, BSize}) ->
-    #state{port=Port, bitrate=Bitrate,
+initial_state(CameraPort, _FfmpegPort, Bitrate, {via, Pid, BSize}) ->
+    #state{camera_port=CameraPort,
+           bitrate=Bitrate,
            via=Pid,
            buffer_size=BSize,
            buffer_left=BSize,
            buffer = <<>>};
-initial_state(Port, Bitrate, _) ->
-    #state{port=Port, bitrate=Bitrate}.
+initial_state(CameraPort, FfmpegPort, Bitrate, _) ->
+    #state{camera_port=CameraPort,
+           ffmpeg_port=FfmpegPort,
+           bitrate=Bitrate}.
 
 cmd(Bitrate, {via, _, _}) ->
-    app(Bitrate);
+    {app(Bitrate), undefined};
 cmd(Bitrate, {yt, List}) when is_list(List) ->
-    app(Bitrate) ++ " | " ++
-    "ffmpeg -ar 44100 -ac 1 -f s16le -i /tmp/silence.aac -i - -vcodec copy "
-    "-acodec aac -ab 128k -f flv -strict experimental -shortest "
-    ++ List ++ " 2> /dev/null ";
+    os:cmd("mkfifo /tmp/camera.h264"),
+    {app(Bitrate) ++ " > /tmp/camera.h264",
+    "ffmpeg -ar 44100 -ac 1 -f s16le -i /tmp/silence.aac "
+    "-i /tmp/camera.h264 -vcodec copy -acodec aac -ab 128k "
+    "-f flv -strict experimental -shortest "
+    ++ List ++ " 2> /dev/null "};
 cmd(Bitrate, {rtmp, List}) when is_list(List) ->
-    app(Bitrate) ++ " | " ++
-    "ffmpeg -i - -vcodec copy -an -f flv " ++ List ++ " 2> /dev/null";
+    os:cmd("mkfifo /tmp/camera.h264"),
+    {app(Bitrate) ++ " > /tmp/camera.h264",
+    "ffmpeg -i /tmp/camera.h264 -vcodec copy -an -f flv "
+     ++ List ++ " 2> /dev/null"};
 cmd(Bitrate, Other) ->
-    app(Bitrate) ++ " > " ++ Other.
+    {app(Bitrate) ++ " > " ++ Other, undefined}.
 
 app(Bitrate) ->
     filename:join([priv, lib, chat_camera]) ++ " " ++
     integer_to_list(Bitrate).
+
+kill_processes(Name) ->
+    os:cmd("kill $(ps ax | grep '" ++ atom_to_list(Name)
+           ++ "' | awk '{print $1}')").

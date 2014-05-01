@@ -14,8 +14,8 @@
 // (882 zeros every 1/100 s = 44100 Hz mono)
 int main(int argc, char** argv) {
     int i = 0;
-    unsigned char chunk[10000];
-    for(i=0; i<10000; i++) {
+    unsigned char chunk[8820 + 180];
+    for(i=0; i<8820 + 180; i++) {
         chunk[i] = 0;
     }
     
