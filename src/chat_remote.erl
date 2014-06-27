@@ -38,8 +38,14 @@ handle_call(preview, _From, State) ->
 handle_call(add_logo, _From, State) ->
     Reply = {ok, chat_overlay:add_logo(logo)},
     {reply, Reply, State};
+handle_call({add_logo, Alpha}, _From, State) ->
+    Reply = {ok, chat_overlay:add_logo(logo, Alpha)},
+    {reply, Reply, State};
 handle_call({add_info, Competition, Event, Info}, _From, State) ->
     Reply = {ok, chat_overlay:add_info(Event, Competition, Info)},
+    {reply, Reply, State};
+handle_call({add_event, Event}, _From, State) ->
+    Reply = {ok, chat_overlay:add_event(Event)},
     {reply, Reply, State};
 handle_call({delete_segment, Id}, _From, State) ->
     Reply = {ok, chat_overlay:delete_segment(Id)},

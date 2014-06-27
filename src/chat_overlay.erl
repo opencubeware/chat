@@ -4,10 +4,12 @@
 -export([start_link/0,
          flush_buffer/0,
          add_logo/1,
+         add_logo/2,
          add_logo/5,
          add_info/3,
          add_time/1,
          add_time/3,
+         add_event/1,
          delete_time/0,
          segments/0,
          delete_segments/0,
@@ -18,7 +20,7 @@
          system_continue/3,
          system_terminate/4]).
 
--record(state, {segments = [], time}).
+-record(state, {segments = [], time, event_timers = []}).
 
 -define(NIF_TIMEOUT, 4000).
 
@@ -40,8 +42,11 @@ flush_buffer() ->
     call(flush_buffer).
 
 add_logo(Id) ->
+    add_logo(Id, 1.0).
+
+add_logo(Id, Alpha) ->
     LogoFile = filename:join(["priv", "assets", "logo_720.png"]),
-    add_logo(Id, LogoFile, 1185, 20, 0.4).
+    add_logo(Id, LogoFile, 1185, 20, Alpha).
 
 add_logo(Id, File, X, Y, Alpha) ->
     call({add_logo, Id, File, X, Y, Alpha}). 
@@ -54,6 +59,9 @@ add_time(Interval) ->
 
 add_time(Interval, X, Y) ->
     call({add_time, Interval, X, Y}).
+
+add_event(Event) ->
+    call({add_event, Event}).
 
 delete_time() ->
     call(delete_time).
@@ -86,6 +94,12 @@ loop(State, Parent, Debug) ->
         {fps, Fps} ->
             NewState = handle_fps(Fps, State),
             loop(NewState, Parent, Debug);
+        {delete_segment, Segment} ->
+            {ok, NewState} = handle_delete_segment(Segment, false, State),
+            loop(NewState, Parent, Debug);
+        {add_event, Event} ->
+            {_, NewState} = handle_add_event(Event, State),
+            loop(NewState, Parent, Debug);
         {add_time, Interval, X, Y} ->
             {_, NewState} = handle_add_time(Interval, X, Y, State),
             loop(NewState, Parent, Debug);
@@ -107,6 +121,10 @@ handle_request({add_info, Event, Competition, Info}, From, Ref, State) ->
     {Reply, NewState} = handle_add_info(Event, Competition, Info, State),
     From ! {reply, Ref, Reply},
     NewState;
+handle_request({add_event, Event}, From, Ref, State) ->
+    {Reply, NewState} = handle_add_event(Event, State),
+    From ! {reply, Ref, Reply},
+    NewState;
 handle_request({add_time, Interval, X, Y}, From, Ref, State) ->
     {Reply, NewState} = handle_add_time(Interval, X, Y, State),
     From ! {reply, Ref, Reply},
@@ -116,7 +134,7 @@ handle_request(delete_time, From, Ref, State) ->
     From ! {reply, Ref, Reply},
     NewState;
 handle_request({delete_segment, Id}, From, Ref, State) ->
-    {Reply, NewState} = handle_delete_segment(Id, State),
+    {Reply, NewState} = handle_delete_segment(Id, true, State),
     From ! {reply, Ref, Reply},
     NewState;
 handle_request(delete_segments, From, Ref, State) ->
@@ -149,6 +167,19 @@ handle_add_info(Competition, Event, Info, State=#state{segments=Segs}) ->
             {Other, State}
     end.
 
+handle_add_event(Event, State=#state{segments=Segs}) ->
+    case wait_for(add_event_nif(Event)) of
+        {ok, Segment} ->
+            NewSegs = [Segment|Segs],
+            Timers = [erlang:send_after(30000,  self(), {delete_segment, event}),
+                      erlang:send_after(120000, self(), {add_event, Event})],
+            NewState = State#state{segments=NewSegs,
+                                   event_timers=Timers},
+            {{ok, Segment}, NewState};
+        Other ->
+            {Other, State}
+    end.
+
 handle_add_time(Interval, X, Y, State=#state{segments=Segs}) ->
     State1 = bump_timer(Interval, X, Y, State),
     case wait_for(add_time_nif(X, Y)) of
@@ -166,7 +197,7 @@ handle_add_time(Interval, X, Y, State=#state{segments=Segs}) ->
     end.
 
 handle_delete_time(State) ->
-    case handle_delete_segment(time, State) of
+    case handle_delete_segment(time, false, State) of
         {ok, #state{time=Timer}=State1} ->
             erlang:cancel_timer(Timer),
             {ok, State1};
@@ -174,11 +205,19 @@ handle_delete_time(State) ->
             Other
     end.
 
-handle_delete_segment(Id, State=#state{segments=Segs}) ->
+handle_delete_segment(Id, External,
+                      State=#state{segments=Segs, event_timers=Timers}) ->
     case wait_for(delete_segment_nif(Id)) of
         ok ->
+            State1 = case {Id, External} of
+                {event, true} ->
+                   [erlang:cancel_timer(Timer) || Timer <- Timers],
+                   State#state{event_timers=[]};
+                _ ->
+                   State
+            end, 
             NewSegs = lists:delete(Id, Segs),
-            NewState = State#state{segments=NewSegs},
+            NewState = State1#state{segments=NewSegs},
             {ok, NewState};
         Other ->
             {Other, State}
@@ -190,7 +229,7 @@ handle_delete_segments(State=#state{segments=Segs}) ->
                 {ok, NewState} = handle_delete_time(AccState),
                 NewState;
             (Segment, AccState) ->
-                {ok, NewState} = handle_delete_segment(Segment, AccState),
+                {ok, NewState} = handle_delete_segment(Segment, false, AccState),
                 NewState
         end, State, Segs).
 
@@ -257,6 +296,9 @@ add_time_nif(_X, _Y) ->
     error(nif_not_loaded).
 
 add_info_nif(_Event, _Competition, _Info) ->
+    error(nif_not_loaded).
+
+add_event_nif(_Event) ->
     error(nif_not_loaded).
 
 add_logo_nif(_Id, _File, _X, _Y, _Alpha) ->

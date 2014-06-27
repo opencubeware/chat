@@ -69,7 +69,7 @@ static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T
         for(i=0;i<pixels;i++) {
             pixel_t pixel = pixel_buffer[i];
             int y = pixel.y * userdata->width + pixel.x;
-            int u = (pixel.y/2) * (userdata->width/2) + (pixel.x/2) + chrominance_offset;
+            int u = (pixel.y >> 1) * (userdata->width >> 1) + (pixel.x >> 1) + chrominance_offset;
             int v = u + offset;
             
             // just in case we tried to overlay something outside the frame, ignore it
@@ -289,9 +289,9 @@ int setup_camera(PORT_USERDATA *userdata) {
     /*mmal_port_parameter_set(camera->output[0], &mirror.hdr);*/
     /*mmal_port_parameter_set(camera->output[1], &mirror.hdr);*/
     /*mmal_port_parameter_set(camera->output[2], &mirror.hdr);*/
-    mmal_port_parameter_set_int32(camera->output[0], MMAL_PARAMETER_ROTATION, 90);
-    mmal_port_parameter_set_int32(camera->output[1], MMAL_PARAMETER_ROTATION, 90);
-    mmal_port_parameter_set_int32(camera->output[2], MMAL_PARAMETER_ROTATION, 90);
+    mmal_port_parameter_set_int32(camera->output[0], MMAL_PARAMETER_ROTATION, 0);
+    mmal_port_parameter_set_int32(camera->output[1], MMAL_PARAMETER_ROTATION, 0);
+    mmal_port_parameter_set_int32(camera->output[2], MMAL_PARAMETER_ROTATION, 0);
 
     if (mmal_port_parameter_set_boolean(camera_video_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS) {
         //printf("%s: Failed to start capture\n", __func__);

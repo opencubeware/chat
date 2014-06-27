@@ -132,6 +132,40 @@ static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     }
 }
 
+static ERL_NIF_TERM add_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifPid pid;
+    char first[128];
+    char second[128];
+    ERL_NIF_TERM *infotuple;
+    int infoarity;
+
+    if(enif_get_tuple(env, argv[0], &infoarity,
+                (const ERL_NIF_TERM**)&infotuple) && infoarity == 2) {
+        if(!enif_get_string(env, infotuple[0], first, 128, ERL_NIF_LATIN1) ||
+           !enif_get_string(env, infotuple[1], second, 128, ERL_NIF_LATIN1)) {
+            return enif_make_badarg(env);
+        }
+    }
+    else {
+        return enif_make_badarg(env);
+    }
+
+    enif_self(env, &pid);
+
+    add_event_args* args = (add_event_args*)enif_alloc(sizeof(add_event_args));
+    args->pid = pid;
+    strcpy(args->first, first);
+    strcpy(args->second, second);
+
+    message_t msg = {CALLBACK, do_add_event, args};
+    if(mq_send(writer, (char*)&msg, sizeof(message_t), 0)) {
+        return ERROR;
+    }
+    else {
+        return OK;
+    }
+}
+
 static ERL_NIF_TERM add_info(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifPid pid;
     char event[64];
@@ -354,6 +388,66 @@ static void do_add_info(void* args) {
     strcpy(segment->id, "info");
     segment->x = 207;
     segment->y = 550;
+    segment->alpha = 255;
+    segment->surface = surface;
+    add_segment(segment, a->pid, 1);
+
+    //cleanup cairo context
+    cairo_destroy(context);
+}
+
+static void do_add_event(void* args) {
+    double m,n;
+    add_event_args* a = (add_event_args*)args;
+
+    cairo_surface_t* surface;
+    cairo_t* context;
+
+    surface = cairo_image_surface_create_from_png("priv/assets/info_720.png");
+    context = cairo_create(surface);
+
+    if(cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        enif_send(NULL, &a->pid, local_env, ERROR);
+        enif_clear_env(local_env);
+        return;
+    }
+
+    cairo_set_source_rgb(context, 1.0, 1.0, 1.0);
+    cairo_set_font_size(context, 16.);
+
+    //draw first line 
+    if(strcmp(a->first, "")) {
+        cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+                CAIRO_FONT_WEIGHT_BOLD);
+        cairo_new_path(context);
+        cairo_move_to(context, 0, 0);
+        cairo_text_path(context, a->first);
+        cairo_get_current_point(context, &m, &n);
+        cairo_new_path(context);
+        cairo_move_to(context, 175-m, 28);
+        cairo_text_path(context, a->first);
+        cairo_fill(context);
+    }
+
+    //draw second line 
+    if(strcmp(a->first, "")) {
+        cairo_select_font_face(context, "Pt Sans", CAIRO_FONT_SLANT_NORMAL,
+                CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_new_path(context);
+        cairo_move_to(context, 0, 0);
+        cairo_text_path(context, a->second);
+        cairo_get_current_point(context, &m, &n);
+        cairo_new_path(context);
+        cairo_move_to(context, 175-m, 48);
+        cairo_text_path(context, a->second);
+        cairo_fill(context);
+    }
+
+    //add segment, actually
+    segment_t* segment = enif_alloc(sizeof(segment_t));
+    strcpy(segment->id, "event");
+    segment->x = 976;
+    segment->y = 20;
     segment->alpha = 255;
     segment->surface = surface;
     add_segment(segment, a->pid, 1);

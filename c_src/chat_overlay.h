@@ -40,6 +40,12 @@ typedef struct {
 
 typedef struct {
     ErlNifPid pid;
+    char first[128];
+    char second[128];
+} add_event_args;
+
+typedef struct {
+    ErlNifPid pid;
     int x;
     int y;
 } add_time_args;
@@ -73,6 +79,7 @@ static ERL_NIF_TERM get_segments(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 static ERL_NIF_TERM flush_buffer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_logo(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_info(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM add_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM add_time(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM delete_segment(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 
@@ -82,6 +89,7 @@ static ErlNifFunc nif_funcs[] =
     {"flush_buffer_nif", 0, flush_buffer},
     {"add_logo_nif", 5, add_logo},
     {"add_info_nif", 3, add_info},
+    {"add_event_nif", 1, add_event},
     {"add_time_nif", 2, add_time},
     {"delete_segment_nif", 1, delete_segment}
 };
@@ -92,6 +100,7 @@ static void* worker_loop(void*);
 static void do_flush_buffer(void*);
 static void do_add_logo(void*);
 static void do_add_info(void*);
+static void do_add_event(void*);
 static void do_add_time(void*);
 static void do_delete_segment(void*);
 static void add_segment(segment_t*, ErlNifPid, int);
