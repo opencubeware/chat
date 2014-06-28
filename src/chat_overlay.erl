@@ -20,7 +20,7 @@
          system_continue/3,
          system_terminate/4]).
 
--record(state, {segments = [], time, event_timers = []}).
+-record(state, {segments = [], time}).
 
 -define(NIF_TIMEOUT, 4000).
 
@@ -94,12 +94,6 @@ loop(State, Parent, Debug) ->
         {fps, Fps} ->
             NewState = handle_fps(Fps, State),
             loop(NewState, Parent, Debug);
-        {delete_segment, Segment} ->
-            {ok, NewState} = handle_delete_segment(Segment, false, State),
-            loop(NewState, Parent, Debug);
-        {add_event, Event} ->
-            {_, NewState} = handle_add_event(Event, State),
-            loop(NewState, Parent, Debug);
         {add_time, Interval, X, Y} ->
             {_, NewState} = handle_add_time(Interval, X, Y, State),
             loop(NewState, Parent, Debug);
@@ -134,7 +128,7 @@ handle_request(delete_time, From, Ref, State) ->
     From ! {reply, Ref, Reply},
     NewState;
 handle_request({delete_segment, Id}, From, Ref, State) ->
-    {Reply, NewState} = handle_delete_segment(Id, true, State),
+    {Reply, NewState} = handle_delete_segment(Id, State),
     From ! {reply, Ref, Reply},
     NewState;
 handle_request(delete_segments, From, Ref, State) ->
@@ -147,35 +141,26 @@ handle_request(segments, From, Ref, State) ->
 handle_request(_Other, _From, _Ref, State) ->
     State.
 
-handle_add_logo(Id, File, X, Y, Alpha, State=#state{segments=Segs}) ->
+handle_add_logo(Id, File, X, Y, Alpha, State) ->
     case wait_for(add_logo_nif(Id, File, X, Y, Alpha)) of
         {ok, Segment} ->
-            NewSegs = [Segment|Segs],
-            NewState = State#state{segments=NewSegs},
-            {{ok, Segment}, NewState};
+            add_segment(Segment, State);
         Other ->
             {Other, State}
     end.
 
-handle_add_info(Competition, Event, Info, State=#state{segments=Segs}) ->
+handle_add_info(Competition, Event, Info, State) ->
     case wait_for(add_info_nif(Competition, Event, Info)) of
         {ok, Segment} ->
-            NewSegs = [Segment|Segs],
-            NewState = State#state{segments=NewSegs},
-            {{ok, Segment}, NewState};
+            add_segment(Segment, State);
         Other ->
             {Other, State}
     end.
 
-handle_add_event(Event, State=#state{segments=Segs}) ->
+handle_add_event(Event, State) ->
     case wait_for(add_event_nif(Event)) of
         {ok, Segment} ->
-            NewSegs = [Segment|Segs],
-            Timers = [erlang:send_after(30000,  self(), {delete_segment, event}),
-                      erlang:send_after(120000, self(), {add_event, Event})],
-            NewState = State#state{segments=NewSegs,
-                                   event_timers=Timers},
-            {{ok, Segment}, NewState};
+            add_segment(Segment, State);
         Other ->
             {Other, State}
     end.
@@ -197,7 +182,7 @@ handle_add_time(Interval, X, Y, State=#state{segments=Segs}) ->
     end.
 
 handle_delete_time(State) ->
-    case handle_delete_segment(time, false, State) of
+    case handle_delete_segment(time, State) of
         {ok, #state{time=Timer}=State1} ->
             erlang:cancel_timer(Timer),
             {ok, State1};
@@ -205,19 +190,11 @@ handle_delete_time(State) ->
             Other
     end.
 
-handle_delete_segment(Id, External,
-                      State=#state{segments=Segs, event_timers=Timers}) ->
+handle_delete_segment(Id, State=#state{segments=Segs}) ->
     case wait_for(delete_segment_nif(Id)) of
         ok ->
-            State1 = case {Id, External} of
-                {event, true} ->
-                   [erlang:cancel_timer(Timer) || Timer <- Timers],
-                   State#state{event_timers=[]};
-                _ ->
-                   State
-            end, 
             NewSegs = lists:delete(Id, Segs),
-            NewState = State1#state{segments=NewSegs},
+            NewState = State#state{segments=NewSegs},
             {ok, NewState};
         Other ->
             {Other, State}
@@ -229,7 +206,7 @@ handle_delete_segments(State=#state{segments=Segs}) ->
                 {ok, NewState} = handle_delete_time(AccState),
                 NewState;
             (Segment, AccState) ->
-                {ok, NewState} = handle_delete_segment(Segment, false, AccState),
+                {ok, NewState} = handle_delete_segment(Segment, AccState),
                 NewState
         end, State, Segs).
 
@@ -246,6 +223,11 @@ system_terminate(Reason, _Parent, _Debug, _State) ->
 %% ===================================================================
 %% Private functions
 %% ===================================================================
+add_segment(Segment, #state{segments=Segs}=State) ->
+    NewSegments = [Segment|Segs],
+    NewState = State#state{segments=NewSegments},
+    {{ok, Segment}, NewState}.
+
 call(Request) ->
     call(Request, 5000).
 
